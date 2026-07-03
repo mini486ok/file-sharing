@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>파일 우체국 — File Post Office</title>
+<meta name="description" content="드래그 앤 드랍으로 파일을 업로드/다운로드하는 파일 공유 페이지">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📮</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="airmail-edge" aria-hidden="true"></div>
+
+<header class="masthead reveal">
+  <div class="postmark" aria-hidden="true">
+    <svg viewBox="0 0 120 120">
+      <circle cx="60" cy="60" r="56" fill="none" stroke="currentColor" stroke-width="3"/>
+      <circle cx="60" cy="60" r="42" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <path id="pm-arc" d="M 60 60 m -49 0 a 49 49 0 1 1 98 0" fill="none"/>
+      <text font-size="13" letter-spacing="3" fill="currentColor">
+        <textPath href="#pm-arc" startOffset="8%">FILE POST OFFICE · SEOUL</textPath>
+      </text>
+      <text x="60" y="57" text-anchor="middle" font-size="15" font-weight="bold" fill="currentColor" id="postmarkDate">2026</text>
+      <text x="60" y="76" text-anchor="middle" font-size="11" letter-spacing="2" fill="currentColor">PAID</text>
+    </svg>
+  </div>
+  <div class="masthead-text">
+    <p class="eyebrow">DRAG · DROP · DELIVERED</p>
+    <h1>파일 우체국</h1>
+    <p class="sub">브라우저와 내 PC 사이, 파일을 부치고 받는 곳
+      <a class="repo-link" href="https://github.com/mini486ok/file-sharing" target="_blank" rel="noopener">mini486ok/file-sharing ↗</a>
+    </p>
+  </div>
+  <button class="btn btn-ghost" id="tokenBtn" type="button">🔑 토큰 설정</button>
+</header>
+
+<p class="notice reveal" id="publicNotice">
+  ⚠ 이 보관함은 <strong>공개 저장소</strong>에 연결되어 있습니다 — 업로드한 파일은 누구나 볼 수 있어요.
+</p>
+
+<main>
+  <!-- 업로드: 드롭존 -->
+  <section class="dropzone reveal" id="dropzone" aria-label="파일 업로드 구역">
+    <div class="dz-corner tl" aria-hidden="true"></div>
+    <div class="dz-corner tr" aria-hidden="true"></div>
+    <div class="dz-corner bl" aria-hidden="true"></div>
+    <div class="dz-corner br" aria-hidden="true"></div>
+    <div class="dz-stamp" aria-hidden="true">✉</div>
+    <h2>여기로 파일을 끌어다 놓으세요</h2>
+    <p class="dz-or">— 또는 —</p>
+    <button class="btn btn-primary" id="pickBtn" type="button">파일 선택해서 부치기</button>
+    <input type="file" id="fileInput" multiple hidden>
+    <p class="dz-hint" id="dzHint">여러 파일 동시 업로드 가능 · 파일당 최대 100MB</p>
+  </section>
+
+  <!-- 업로드 대기열 -->
+  <section class="queue" id="queue" hidden aria-label="업로드 진행 상황">
+    <h3 class="section-title">발송 중<span class="title-line"></span></h3>
+    <ul id="queueList"></ul>
+  </section>
+
+  <!-- 파일 목록 -->
+  <section class="manifest reveal" aria-label="보관 중인 파일">
+    <div class="manifest-head">
+      <h3 class="section-title">보관함<span class="badge" id="fileCount">0</span><span class="title-line"></span></h3>
+      <button class="btn btn-ghost btn-sm" id="refreshBtn" type="button">↻ 새로고침</button>
+    </div>
+    <p class="drag-tip">💡 목록의 파일을 <strong>바탕화면으로 끌어다 놓으면</strong> 바로 다운로드됩니다 (Chrome/Edge)</p>
+    <ul class="file-list" id="fileList"></ul>
+    <div class="empty" id="emptyState">
+      <div class="empty-stamp">📭</div>
+      <p>아직 도착한 파일이 없습니다</p>
+      <p class="empty-sub">위 우편함에 첫 파일을 부쳐보세요</p>
+    </div>
+    <div class="loading" id="loadingState" hidden>
+      <span class="spinner"></span> 보관함을 여는 중…
+    </div>
+  </section>
+</main>
+
+<footer class="reveal">
+  <p><strong>사용 방법</strong> — 업로드에는 GitHub 토큰이 필요합니다(우측 상단 🔑). 다운로드는 누구나 가능합니다.
+  파일은 <code>files/</code> 폴더에 커밋으로 저장됩니다.</p>
+</footer>
+
+<!-- 토큰 설정 모달 -->
+<div class="modal-backdrop" id="tokenModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <h2 id="modalTitle">🔑 GitHub 토큰 설정</h2>
+    <p class="modal-desc">업로드·삭제 시 저장소에 커밋할 권한이 필요합니다. 토큰은 <strong>이 브라우저에만</strong> 저장됩니다(localStorage).</p>
+    <ol class="modal-steps">
+      <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub → Fine-grained token 발급 페이지 ↗</a> 열기</li>
+      <li><strong>Repository access</strong> → Only select repositories → <code>file-sharing</code> 선택</li>
+      <li><strong>Permissions</strong> → Contents → <code>Read and write</code></li>
+      <li>발급된 토큰(<code>github_pat_…</code>)을 아래에 붙여넣기</li>
+    </ol>
+    <input type="password" id="tokenInput" class="token-input" placeholder="github_pat_… 또는 ghp_…" autocomplete="off">
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="saveTokenBtn" type="button">저장</button>
+      <button class="btn btn-ghost" id="clearTokenBtn" type="button">토큰 삭제</button>
+      <button class="btn btn-ghost" id="closeModalBtn" type="button">닫기</button>
+    </div>
+    <p class="token-status" id="tokenStatus"></p>
+  </div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
