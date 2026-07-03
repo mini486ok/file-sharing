@@ -300,7 +300,9 @@ async function processQueue() {
   }
 
   uploading = false;
-  await refreshList(true);
+  // 업로드 응답으로 files 맵을 이미 갱신했으므로 재조회 없이 바로 렌더
+  // (커밋 직후 목록 API는 이전 상태를 돌려줄 수 있음)
+  renderList();
   // 잠시 후 대기열 정리
   setTimeout(() => {
     if (!uploading && !uploadQueue.length) {
@@ -341,15 +343,41 @@ async function uploadOne(file, row, retried = false) {
   const existing = files.get(file.name);
   if (existing) body.sha = existing.sha;
 
-  const status = await xhrPut(contentsUrl(file.name), body, (pct) => {
+  const { status, json } = await xhrPut(contentsUrl(file.name), body, (pct) => {
     row.fill.style.width = pct + "%";
   });
 
-  if (status === 200 || status === 201) return;
+  if (status === 200 || status === 201) {
+    // 응답에 담긴 새 파일 정보로 목록을 즉시 갱신
+    if (json && json.content) {
+      files.set(json.content.name, {
+        name: json.content.name,
+        size: json.content.size,
+        sha: json.content.sha,
+        path: json.content.path,
+        download_url: json.content.download_url,
+      });
+    }
+    return;
+  }
 
   if ((status === 409 || status === 422) && !retried) {
-    // 다른 커밋과 충돌 → 최신 sha 다시 받아서 1회 재시도
-    await refreshList(true);
+    // 다른 커밋과 충돌 → 해당 파일의 최신 sha를 받아서 1회 재시도
+    try {
+      const res = await fetch(contentsUrl(file.name) + "?ref=" + CONFIG.branch, {
+        headers: apiHeaders(),
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const cur = await res.json();
+        files.set(file.name, {
+          name: cur.name, size: cur.size, sha: cur.sha,
+          path: cur.path, download_url: cur.download_url,
+        });
+      } else if (res.status === 404) {
+        files.delete(file.name);
+      }
+    } catch { /* 재시도에서 판정 */ }
     return uploadOne(file, row, true);
   }
   if (status === 401) throw new Error("토큰이 유효하지 않습니다 (401)");
@@ -367,7 +395,11 @@ function xhrPut(url, bodyObj, onProgress) {
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
     });
-    xhr.addEventListener("load", () => resolve(xhr.status));
+    xhr.addEventListener("load", () => {
+      let json = null;
+      try { json = JSON.parse(xhr.responseText); } catch { /* 본문 없음 */ }
+      resolve({ status: xhr.status, json });
+    });
     xhr.addEventListener("error", () => reject(new Error("네트워크 오류")));
     xhr.send(JSON.stringify(bodyObj));
   });
@@ -394,8 +426,9 @@ async function deleteFile(f, btn) {
     });
     if (!res.ok) throw new Error("삭제 실패 (HTTP " + res.status + ")");
     newlyUploaded.delete(f.name);
+    files.delete(f.name); // 커밋 직후 목록 API는 지연될 수 있어 로컬에서 즉시 반영
     toast("🗑 " + f.name + " 삭제됨", "ok");
-    await refreshList(true);
+    renderList();
   } catch (err) {
     toast("✖ " + err.message, "err");
     btn.disabled = false;
